@@ -1,0 +1,99 @@
+environment: prod
+repoURL: https://github.com/brandonapol/clickhouse-observability-stack.git
+targetRevision: main
+
+global:
+  labels:
+    environment: prod
+
+applications:
+  clickhouse-operator:
+    values:
+      secrets:
+        credentials:
+          create: false
+      deployment:
+        containers:
+          clickhouse-operator:
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                memory: 512Mi
+
+  clickhouse:
+    values:
+      objects:
+        installation:
+          spec:
+            configuration:
+              profiles: null
+              files: null
+            templates:
+              podTemplates:
+                - name: clickhouse
+                  spec:
+                    containers:
+                      - name: clickhouse
+                        image: clickhouse/clickhouse-server:26.9.5.2
+                        resources:
+                          requests:
+                            cpu: "2"
+                            memory: 8Gi
+                          limits:
+                            memory: 8Gi
+              volumeClaimTemplates:
+                - name: data
+                  spec:
+                    accessModes:
+                      - ReadWriteOnce
+                    resources:
+                      requests:
+                        storage: 200Gi
+
+  cerberus:
+    values:
+      deployment:
+        replicas: 2
+        containers:
+          cerberus:
+            env:
+              GOMEMLIMIT: 1717986918B
+            resources:
+              requests:
+                cpu: 250m
+                memory: 512Mi
+              limits:
+                memory: 2Gi
+
+  otel-collector:
+    values:
+      deployment:
+        containers:
+          otel-collector:
+            env:
+              GOMEMLIMIT: 1638MiB
+            resources:
+              requests:
+                cpu: 500m
+                memory: 512Mi
+              limits:
+                memory: 2Gi
+
+  grafana:
+    values:
+      deployment:
+        containers:
+          grafana:
+            env:
+              GOMEMLIMIT: 921MiB
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                memory: 1Gi
+
+  demo-load:
+    enabled: false

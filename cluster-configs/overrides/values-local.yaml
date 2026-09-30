@@ -1,0 +1,24 @@
+environment: local
+repoURL: https://github.com/brandonapol/clickhouse-observability-stack.git
+targetRevision: main
+
+global:
+  labels:
+    environment: local
+
+applications:
+  clickhouse:
+    values:
+      secrets:
+        credentials:
+          create: true
+          stringData:
+            password: otel-local-dev
+  grafana:
+    values:
+      secrets:
+        admin:
+          create: true
+          stringData:
+            admin-user: admin
+            admin-password: admin

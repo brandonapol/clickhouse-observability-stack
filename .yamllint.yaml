@@ -6,6 +6,7 @@ ignore: |
   .venv/
   templates/
   cluster-nodes/*/crds/
+  tests/golden/
 
 rules:
   document-start: disable

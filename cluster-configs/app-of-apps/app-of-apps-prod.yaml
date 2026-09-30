@@ -1,17 +1,19 @@
-# The "app of apps": one Application that deploys every Application in apps/.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: root
+  name: app-of-apps-prod
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
-    repoURL: https://github.com/benhastings/clickhouse-observability-stack.git
+    repoURL: https://github.com/brandonapol/clickhouse-observability-stack.git
     targetRevision: main
-    path: apps
+    path: cluster-configs/app-of-apps
+    helm:
+      valueFiles:
+        - ../overrides/values-prod.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

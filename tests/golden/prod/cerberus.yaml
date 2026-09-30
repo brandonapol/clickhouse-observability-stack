@@ -1,0 +1,168 @@
+---
+# Source: cerberus/templates/common.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cerberus
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: cerberus
+    app.kubernetes.io/instance: cerberus
+    app.kubernetes.io/part-of: clickhouse-observability-stack
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: cerberus-0.1.0
+    app.kubernetes.io/version: "1.22.0"
+    environment: prod
+automountServiceAccountToken: false
+---
+# Source: cerberus/templates/common.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cerberus-env
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: cerberus
+    app.kubernetes.io/instance: cerberus
+    app.kubernetes.io/part-of: clickhouse-observability-stack
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: cerberus-0.1.0
+    app.kubernetes.io/version: "1.22.0"
+    environment: prod
+data:
+  CERBERUS_ADMIT_DISABLED: "false"
+  CERBERUS_ADMIT_LOKI: "true"
+  CERBERUS_ADMIT_PROM: "true"
+  CERBERUS_ADMIT_TAIL: "true"
+  CERBERUS_ADMIT_TEMPO: "true"
+  CERBERUS_AUTO_CREATE_DATABASE: "true"
+  CERBERUS_AUTO_CREATE_SCHEMA: "true"
+  CERBERUS_CH_ADDR: "clickhouse:9000"
+  CERBERUS_CH_DATABASE: "otel"
+  CERBERUS_CH_DIAL_TIMEOUT: "10s"
+  CERBERUS_CH_OPTIMIZATIONS: "auto"
+  CERBERUS_CH_PROTOCOL: "native"
+  CERBERUS_CH_USERNAME: "otel"
+  CERBERUS_HTTP_ADDR: ":8080"
+  CERBERUS_LOG_FORMAT: "json"
+  CERBERUS_LOG_LEVEL: "info"
+  CERBERUS_OTLP_LOGS_ENABLED: "true"
+  CERBERUS_OTLP_METRICS_ENABLED: "true"
+  CERBERUS_OTLP_TRACES_ENABLED: "true"
+  CERBERUS_QUERY_MAX_SAMPLES: "5000000"
+  CERBERUS_SCHEMA_TTL: "7d"
+---
+# Source: cerberus/templates/common.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: cerberus
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: cerberus
+    app.kubernetes.io/instance: cerberus
+    app.kubernetes.io/part-of: clickhouse-observability-stack
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: cerberus-0.1.0
+    app.kubernetes.io/version: "1.22.0"
+    environment: prod
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: cerberus
+    app.kubernetes.io/instance: cerberus
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+      appProtocol: http
+---
+# Source: cerberus/templates/common.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cerberus
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: cerberus
+    app.kubernetes.io/instance: cerberus
+    app.kubernetes.io/part-of: clickhouse-observability-stack
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: cerberus-0.1.0
+    app.kubernetes.io/version: "1.22.0"
+    environment: prod
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cerberus
+      app.kubernetes.io/instance: cerberus
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cerberus
+        app.kubernetes.io/instance: cerberus
+      annotations:
+        checksum/config: f5dc7127b2a064b557254fc1069014bba6a7f9eed40ca0194b61be1a8718884b
+    spec:
+      serviceAccountName: cerberus
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 65532
+        runAsGroup: 65532
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: cerberus
+          image: "ghcr.io/tsouza/cerberus:1.22.0"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: CERBERUS_CH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                  name: clickhouse-credentials
+            - name: GOMEMLIMIT
+              value: "1717986918B"
+          envFrom:
+            - configMapRef:
+                name: 'cerberus-env'
+          livenessProbe:
+            failureThreshold: 6
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 3
+            timeoutSeconds: 5
+          resources:
+            limits:
+              memory: 2Gi
+            requests:
+              cpu: 250m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            privileged: false
+            readOnlyRootFilesystem: true

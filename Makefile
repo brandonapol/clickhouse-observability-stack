@@ -10,9 +10,10 @@ YAMLLINT_VERSION := 1.38.0
 SHELLCHECK_VERSION := 0.11.0.1
 HELM_UNITTEST_VERSION := v1.1.2
 KUBE_VERSION := 1.34.0
+GOLDEN := tests/golden
 
 LOCAL_CHARTS := $(patsubst %/Chart.yaml,%,$(wildcard cluster-nodes/*/Chart.yaml tests/charts/*/Chart.yaml))
-UNIT_TEST_CHARTS := $(patsubst %/tests/,%,$(dir $(wildcard cluster-nodes/*/tests/*_test.yaml tests/charts/*/tests/*_test.yaml)))
+UNIT_TEST_CHARTS := $(patsubst %/tests/,%,$(dir $(wildcard cluster-configs/app-of-apps/tests/*_test.yaml cluster-nodes/*/tests/*_test.yaml tests/charts/*/tests/*_test.yaml)))
 
 VENV := .venv
 
@@ -61,10 +62,10 @@ setup/hooks: ## Point git at git/hooks so the pre-commit check runs
 ##@ Checks
 
 .PHONY: check
-check: check/lint check/manifests ## The whole gate CI runs
+check: check/lint check/golden check/manifests ## The whole gate CI runs
 
 .PHONY: check/lint
-check/lint: check/yaml check/shell check/apps check/workflows check/spelling ## Offline checks, what the pre-commit hook runs
+check/lint: check/yaml check/shell check/structure check/workflows check/spelling ## Offline checks, what the pre-commit hook runs
 
 .PHONY: check/yaml
 check/yaml: ## yamllint every YAML file against .yamllint.yaml
@@ -74,9 +75,17 @@ check/yaml: ## yamllint every YAML file against .yamllint.yaml
 check/shell: ## shellcheck every script
 	$(VENV)/bin/shellcheck $(SHELL_SCRIPTS)
 
-.PHONY: check/apps
-check/apps: ## Enforce the Application conventions in AGENTS.md
-	scripts/check-apps.bash
+.PHONY: check/structure
+check/structure: ## Enforce the cluster-configs and cluster-nodes layout in AGENTS.md
+	scripts/check-structure.bash
+
+.PHONY: check/golden
+check/golden: deps ## Fail when tests/golden differs from a fresh render
+	@tmp="$$(mktemp -d)" && trap 'rm -rf "$$tmp"' EXIT && \
+	KUBE_VERSION=$(KUBE_VERSION) scripts/render.bash "$$tmp" && \
+	if ! diff -ru $(GOLDEN) "$$tmp"; then \
+		echo "tests/golden is stale: run make generate and commit the result"; exit 1; \
+	fi
 
 .PHONY: check/workflows
 check/workflows: ## actionlint the GitHub Actions workflows
@@ -87,8 +96,15 @@ check/spelling: ## cspell against cspell.json (American and British English)
 	npm run --silent spell
 
 .PHONY: check/manifests
-check/manifests: deps ## Render every chart at its pinned version and validate all manifests with kubeconform
-	scripts/check-manifests.bash
+check/manifests: ## kubeconform tests/golden against pinned schemas; require memory limits and pinned images
+	KUBE_VERSION=$(KUBE_VERSION) scripts/check-manifests.bash
+
+##@ Generate
+
+.PHONY: generate
+generate: deps ## Re-render tests/golden: every node, as Argo CD would deploy it, for every environment
+	rm -rf $(GOLDEN)
+	KUBE_VERSION=$(KUBE_VERSION) scripts/render.bash $(GOLDEN)
 
 ##@ Tests
 

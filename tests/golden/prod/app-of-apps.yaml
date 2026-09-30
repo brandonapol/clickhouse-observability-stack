@@ -1,0 +1,253 @@
+---
+# Source: app-of-apps/templates/application.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cerberus-prod
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: clickhouse-observability-stack
+    environment: prod
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/brandonapol/clickhouse-observability-stack.git
+    targetRevision: main
+    path: cluster-nodes/cerberus
+    helm:
+      releaseName: cerberus
+      valuesObject:
+        deployment:
+          containers:
+            cerberus:
+              env:
+                GOMEMLIMIT: 1717986918B
+              resources:
+                limits:
+                  memory: 2Gi
+                requests:
+                  cpu: 250m
+                  memory: 512Mi
+          replicas: 2
+        global:
+          labels:
+            environment: prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+---
+# Source: app-of-apps/templates/application.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: clickhouse-prod
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: clickhouse-observability-stack
+    environment: prod
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/brandonapol/clickhouse-observability-stack.git
+    targetRevision: main
+    path: cluster-nodes/clickhouse
+    helm:
+      releaseName: clickhouse
+      valuesObject:
+        global:
+          labels:
+            environment: prod
+        objects:
+          installation:
+            spec:
+              configuration:
+                files: null
+                profiles: null
+              templates:
+                podTemplates:
+                - name: clickhouse
+                  spec:
+                    containers:
+                    - image: clickhouse/clickhouse-server:26.9.5.2
+                      name: clickhouse
+                      resources:
+                        limits:
+                          memory: 8Gi
+                        requests:
+                          cpu: "2"
+                          memory: 8Gi
+                volumeClaimTemplates:
+                - name: data
+                  spec:
+                    accessModes:
+                    - ReadWriteOnce
+                    resources:
+                      requests:
+                        storage: 200Gi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+---
+# Source: app-of-apps/templates/application.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: clickhouse-operator-prod
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: clickhouse-observability-stack
+    environment: prod
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/brandonapol/clickhouse-observability-stack.git
+    targetRevision: main
+    path: cluster-nodes/clickhouse-operator
+    helm:
+      releaseName: clickhouse-operator
+      valuesObject:
+        deployment:
+          containers:
+            clickhouse-operator:
+              resources:
+                limits:
+                  memory: 512Mi
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+        global:
+          labels:
+            environment: prod
+        secrets:
+          credentials:
+            create: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: clickhouse-operator
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+---
+# Source: app-of-apps/templates/application.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: grafana-prod
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: clickhouse-observability-stack
+    environment: prod
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/brandonapol/clickhouse-observability-stack.git
+    targetRevision: main
+    path: cluster-nodes/grafana
+    helm:
+      releaseName: grafana
+      valuesObject:
+        deployment:
+          containers:
+            grafana:
+              env:
+                GOMEMLIMIT: 921MiB
+              resources:
+                limits:
+                  memory: 1Gi
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+        global:
+          labels:
+            environment: prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+---
+# Source: app-of-apps/templates/application.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: otel-collector-prod
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: clickhouse-observability-stack
+    environment: prod
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/brandonapol/clickhouse-observability-stack.git
+    targetRevision: main
+    path: cluster-nodes/otel-collector
+    helm:
+      releaseName: otel-collector
+      valuesObject:
+        deployment:
+          containers:
+            otel-collector:
+              env:
+                GOMEMLIMIT: 1638MiB
+              resources:
+                limits:
+                  memory: 2Gi
+                requests:
+                  cpu: 500m
+                  memory: 512Mi
+        global:
+          labels:
+            environment: prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

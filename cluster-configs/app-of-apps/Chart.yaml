@@ -1,0 +1,7 @@
+apiVersion: v2
+name: app-of-apps
+description: >-
+  Renders one Argo CD Application per entry in .Values.applications, each
+  deploying a chart from cluster-nodes/ with that environment's values.
+type: application
+version: 0.1.0

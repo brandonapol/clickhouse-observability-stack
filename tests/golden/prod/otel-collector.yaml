@@ -1,0 +1,249 @@
+---
+# Source: otel-collector/templates/common.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/instance: otel-collector
+    app.kubernetes.io/part-of: clickhouse-observability-stack
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: otel-collector-0.1.0
+    app.kubernetes.io/version: "0.161.0"
+    environment: prod
+automountServiceAccountToken: false
+---
+# Source: otel-collector/templates/common.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/instance: otel-collector
+    app.kubernetes.io/part-of: clickhouse-observability-stack
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: otel-collector-0.1.0
+    app.kubernetes.io/version: "0.161.0"
+    environment: prod
+data:
+  relay.yaml: |-
+    connectors:
+      servicegraph:
+        latency_histogram_buckets:
+        - 10ms
+        - 50ms
+        - 100ms
+        - 250ms
+        - 500ms
+        - 1s
+        - 2.5s
+        - 5s
+        store:
+          max_items: 10000
+          ttl: 5s
+      spanmetrics:
+        dimensions:
+        - name: http.request.method
+        - name: http.response.status_code
+        - name: http.route
+        exemplars:
+          enabled: true
+        histogram:
+          explicit:
+            buckets:
+            - 5ms
+            - 10ms
+            - 25ms
+            - 50ms
+            - 100ms
+            - 250ms
+            - 500ms
+            - 1s
+            - 2.5s
+            - 5s
+            - 10s
+          unit: ms
+        metrics_flush_interval: 15s
+    exporters:
+      clickhouse:
+        create_schema: false
+        database: otel
+        endpoint: tcp://clickhouse:9000?dial_timeout=10s
+        password: ${env:CLICKHOUSE_PASSWORD}
+        retry_on_failure:
+          enabled: true
+          max_elapsed_time: 5m
+        sending_queue:
+          enabled: true
+        timeout: 10s
+        username: otel
+    extensions:
+      health_check:
+        endpoint: ${env:MY_POD_IP}:13133
+    processors:
+      batch: {}
+      memory_limiter:
+        check_interval: 5s
+        limit_percentage: 80
+        spike_limit_percentage: 25
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: ${env:MY_POD_IP}:4317
+          http:
+            endpoint: ${env:MY_POD_IP}:4318
+    service:
+      extensions:
+      - health_check
+      pipelines:
+        logs:
+          exporters:
+          - clickhouse
+          processors:
+          - memory_limiter
+          - batch
+          receivers:
+          - otlp
+        metrics:
+          exporters:
+          - clickhouse
+          processors:
+          - memory_limiter
+          - batch
+          receivers:
+          - otlp
+          - spanmetrics
+          - servicegraph
+        traces:
+          exporters:
+          - clickhouse
+          - spanmetrics
+          - servicegraph
+          processors:
+          - memory_limiter
+          - batch
+          receivers:
+          - otlp
+      telemetry:
+        metrics:
+          readers:
+          - pull:
+              exporter:
+                prometheus:
+                  host: ${env:MY_POD_IP}
+                  port: 8888
+---
+# Source: otel-collector/templates/common.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/instance: otel-collector
+    app.kubernetes.io/part-of: clickhouse-observability-stack
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: otel-collector-0.1.0
+    app.kubernetes.io/version: "0.161.0"
+    environment: prod
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/instance: otel-collector
+  ports:
+    - name: otlp
+      port: 4317
+      targetPort: otlp
+      protocol: TCP
+      appProtocol: grpc
+    - name: otlp-http
+      port: 4318
+      targetPort: otlp-http
+      protocol: TCP
+---
+# Source: otel-collector/templates/common.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/instance: otel-collector
+    app.kubernetes.io/part-of: clickhouse-observability-stack
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: otel-collector-0.1.0
+    app.kubernetes.io/version: "0.161.0"
+    environment: prod
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: otel-collector
+      app.kubernetes.io/instance: otel-collector
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: otel-collector
+        app.kubernetes.io/instance: otel-collector
+      annotations:
+        checksum/config: 7a29d4eb72971eeff824f1142f67f0a75077b8b60d0494d5ecdc0870f600da97
+    spec:
+      serviceAccountName: otel-collector
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: otel-collector
+          image: "otel/opentelemetry-collector-contrib:0.161.0"
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config=/conf/relay.yaml
+          ports:
+            - name: otlp
+              containerPort: 4317
+              protocol: TCP
+            - name: otlp-http
+              containerPort: 4318
+              protocol: TCP
+          env:
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                  name: clickhouse-credentials
+            - name: GOMEMLIMIT
+              value: "1638MiB"
+            - name: MY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 13133
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 13133
+          resources:
+            limits:
+              memory: 2Gi
+            requests:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - mountPath: /conf
+              name: config
+      volumes:
+        - name: config
+          configMap:
+            name: 'otel-collector'

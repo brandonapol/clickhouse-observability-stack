@@ -10,7 +10,8 @@
     ".git/**",
     "cluster-nodes/*/crds/**",
     "cluster-nodes/clickhouse-operator/files/**",
-    "cluster-nodes/grafana/dashboards/**"
+    "cluster-nodes/grafana/dashboards/**",
+    "tests/golden/**"
   ],
   "ignoreRegExpList": [
     "/sha256:[0-9a-f]+/g"

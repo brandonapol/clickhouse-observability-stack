@@ -35,6 +35,9 @@ jobs:
       - name: Unit tests
         run: |
           make test
-      - name: Render and validate manifests
+      - name: Golden renders are up to date
+        run: |
+          make check/golden
+      - name: Validate manifests
         run: |
           make check/manifests

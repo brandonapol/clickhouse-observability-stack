@@ -1,0 +1,23 @@
+environment: ""
+repoURL: ""
+targetRevision: main
+project: default
+destinationServer: https://kubernetes.default.svc
+namespace: observability
+
+global: {}
+
+applications:
+  clickhouse-operator:
+    syncWave: 0
+    namespace: clickhouse-operator
+  clickhouse:
+    syncWave: 1
+  cerberus:
+    syncWave: 2
+  otel-collector:
+    syncWave: 3
+  grafana:
+    syncWave: 3
+  demo-load:
+    syncWave: 4

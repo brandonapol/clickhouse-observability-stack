@@ -1,0 +1,40 @@
+{{- $env := required "environment is required" .Values.environment -}}
+{{- $repoURL := required "repoURL is required" .Values.repoURL -}}
+{{- range $name, $app := .Values.applications }}
+{{- if and $app (ne $app.enabled false) }}
+{{- $values := mustMergeOverwrite (dict "global" (deepCopy $.Values.global)) (deepCopy (default dict $app.values)) }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $name }}-{{ $env }}
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: clickhouse-observability-stack
+    environment: {{ $env }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ required (printf "applications.%s.syncWave is required" $name) $app.syncWave | quote }}
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: {{ $.Values.project }}
+  source:
+    repoURL: {{ $repoURL }}
+    targetRevision: {{ $.Values.targetRevision }}
+    path: cluster-nodes/{{ $name }}
+    helm:
+      releaseName: {{ $name }}
+      valuesObject:
+        {{- toYaml $values | nindent 8 }}
+  destination:
+    server: {{ $.Values.destinationServer }}
+    namespace: {{ $app.namespace | default $.Values.namespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+{{- end }}
+{{- end }}

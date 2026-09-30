@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Create a local kind cluster, install Argo CD, and hand everything else to
-# the app-of-apps (bootstrap/root-app.yaml).
+# the app-of-apps (cluster-configs/app-of-apps/app-of-apps-local.yaml).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -16,11 +16,10 @@ echo "==> Installing Argo CD (chart $ARGOCD_CHART_VERSION)"
 helm upgrade --install argocd argo-cd \
   --repo https://argoproj.github.io/argo-helm --version "$ARGOCD_CHART_VERSION" \
   --namespace argocd --create-namespace \
-  -f bootstrap/argocd-values.yaml --wait --timeout 10m
+  -f cluster-configs/argocd/values.yaml --wait --timeout 10m
 
-echo "==> Registering the Cerberus OCI chart repository and the root app"
-kubectl apply -f bootstrap/repositories.yaml
-kubectl apply -f bootstrap/root-app.yaml
+echo "==> Applying the local app-of-apps"
+kubectl apply -f cluster-configs/app-of-apps/app-of-apps-local.yaml
 
 cat <<'MSG'
 

@@ -1,0 +1,97 @@
+suite: app-of-apps
+templates:
+  - templates/application.yaml
+release:
+  name: app-of-apps
+  namespace: argocd
+set:
+  environment: test
+  repoURL: https://example.com/repo.git
+tests:
+  - it: renders one Application per enabled app, suffixed with the environment
+    asserts:
+      - hasDocuments:
+          count: 6
+      - equal:
+          path: metadata.name
+          value: cerberus-test
+        documentIndex: 0
+
+  - it: deploys each app's cluster-nodes chart under its own release name
+    documentSelector:
+      path: metadata.name
+      value: grafana-test
+    asserts:
+      - equal:
+          path: spec.source.path
+          value: cluster-nodes/grafana
+      - equal:
+          path: spec.source.helm.releaseName
+          value: grafana
+      - equal:
+          path: spec.destination.namespace
+          value: observability
+
+  - it: carries each app's sync wave and namespace
+    documentSelector:
+      path: metadata.name
+      value: clickhouse-operator-test
+    asserts:
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "0"
+      - equal:
+          path: spec.destination.namespace
+          value: clickhouse-operator
+
+  - it: skips an app an environment disables
+    set:
+      applications.demo-load.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 5
+
+  - it: passes global and the app's values to the node, app values winning
+    set:
+      global.labels.environment: test
+      applications.cerberus.values.deployment.replicas: 3
+      applications.cerberus.values.global.labels.team: query
+    documentSelector:
+      path: metadata.name
+      value: cerberus-test
+    asserts:
+      - equal:
+          path: spec.source.helm.valuesObject
+          value:
+            global:
+              labels:
+                environment: test
+                team: query
+            deployment:
+              replicas: 3
+
+  - it: does not leak one app's values into another
+    set:
+      applications.cerberus.values.deployment.replicas: 3
+    documentSelector:
+      path: metadata.name
+      value: grafana-test
+    asserts:
+      - equal:
+          path: spec.source.helm.valuesObject
+          value:
+            global: {}
+
+  - it: requires an environment
+    set:
+      environment: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: environment is required
+
+  - it: requires a sync wave on every app
+    set:
+      applications.extra.namespace: observability
+    asserts:
+      - failedTemplate:
+          errorMessage: applications.extra.syncWave is required
