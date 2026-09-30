@@ -209,9 +209,23 @@ make test       # helm-unittest suites for the library, every node and the app-o
 make generate   # re-render tests/golden after changing any chart or values
 make check      # what CI runs: yamllint, shellcheck, layout rules, actionlint, cspell,
                 # tests/golden up to date, and kubeconform plus container policy over it
+make test/e2e REVISION=my-branch   # needs Docker: deploy a pushed branch to kind and query it
 ```
 
-None of these touch a cluster or a chart registry, so they give the same answer on any machine.
+### How the tests stay predictable
+
+| Layer | What it catches | Where it runs |
+|---|---|---|
+| helm-unittest | a template or value that renders the wrong object; the contracts between apps (Secret names, Service ports, schema ownership) | `make test`, offline |
+| Golden renders | any change to what lands in a cluster, per environment, shown as a diff in the PR | `make check`, offline |
+| kubeconform + policy | invalid objects, missing memory limits, unpinned images | `make check`, pinned schemas |
+| kind e2e | ordering, health, and whether data actually flows from OTLP to Grafana | CI on every PR, or locally with Docker |
+
+Everything that could drift is pinned: tool versions in the `Makefile`, Kubernetes `1.37.0` for rendering,
+schemas and the kind node image (by digest), and the schema sources by commit. No chart is fetched from a
+registry. So the first three layers give the same answer on any machine, and the e2e job only differs where
+the network does: image pulls and the Argo CD chart.
+
 [`AGENTS.md`](AGENTS.md) has the conventions and what to update when adding or bumping a component.
 
 ## Troubleshooting

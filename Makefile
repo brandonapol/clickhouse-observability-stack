@@ -9,7 +9,9 @@ ACTIONLINT_VERSION := v1.7.12
 YAMLLINT_VERSION := 1.38.0
 SHELLCHECK_VERSION := 0.11.0.1
 HELM_UNITTEST_VERSION := v1.1.2
-KUBE_VERSION := 1.34.0
+KUBE_VERSION := 1.37.0
+KIND_VERSION := v0.33.0
+KUBECTL_VERSION := v1.37.1
 GOLDEN := tests/golden
 
 LOCAL_CHARTS := $(patsubst %/Chart.yaml,%,$(wildcard cluster-nodes/*/Chart.yaml tests/charts/*/Chart.yaml))
@@ -44,6 +46,13 @@ setup/tools/helm-unittest:
 	git clone -q --depth 1 --branch $(HELM_UNITTEST_VERSION) https://github.com/helm-unittest/helm-unittest "$$tmp" && \
 	(cd "$$tmp" && go build -o "$$(go env GOPATH)/bin/helm-unittest" ./cmd/helm-unittest) && \
 	rm -rf "$$tmp"
+
+.PHONY: setup/tools/cluster
+setup/tools/cluster: ## Install kind and kubectl, which only the local cluster and test/e2e need
+	go install sigs.k8s.io/kind@$(KIND_VERSION)
+	curl -fsSLo "$$(go env GOPATH)/bin/kubectl" \
+		"https://dl.k8s.io/release/$(KUBECTL_VERSION)/bin/$$(go env GOOS)/$$(go env GOARCH)/kubectl"
+	chmod +x "$$(go env GOPATH)/bin/kubectl"
 
 .PHONY: setup/tools/python
 setup/tools/python:
@@ -117,6 +126,11 @@ deps: ## Rebuild every local chart's file:// dependencies from Chart.lock
 .PHONY: test
 test: test/unit ## Every offline test
 
+.PHONY: test/e2e
+test/e2e: ## Needs Docker: kind cluster at REVISION (default main), wait for Argo CD, then query the stack
+	scripts/kind-up.sh $(REVISION)
+	scripts/e2e.bash
+
 .PHONY: test/unit
 test/unit: deps ## helm-unittest suites for the common library and every cluster node
 	helm-unittest --strict $(sort $(UNIT_TEST_CHARTS))
@@ -124,8 +138,8 @@ test/unit: deps ## helm-unittest suites for the common library and every cluster
 ##@ Local cluster
 
 .PHONY: cluster/up
-cluster/up: ## Create the kind cluster, install Argo CD and apply the root app
-	scripts/kind-up.sh
+cluster/up: ## Create the kind cluster, install Argo CD and apply the local app-of-apps (REVISION=<git ref> to deploy a branch)
+	scripts/kind-up.sh $(REVISION)
 
 .PHONY: cluster/down
 cluster/down: ## Delete the kind cluster

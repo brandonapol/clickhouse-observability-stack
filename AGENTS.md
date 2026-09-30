@@ -54,6 +54,7 @@ add a target. `make help` lists everything.
 | Target                      | What it does                                                                 |
 | --------------------------- | ---------------------------------------------------------------------------- |
 | `make setup`                | installs every check tool (Go, Python 3 and Node required) and the git hooks    |
+| `make setup/tools/cluster`  | kind and kubectl at pinned versions, for `cluster/...` and `test/e2e`          |
 | `make check`                | the whole gate CI runs: `check/lint`, `check/golden`, `check/manifests`        |
 | `make check/lint`           | yamllint, shellcheck, `check/structure`, actionlint, cspell                   |
 | `make check/structure`      | the cluster-configs and cluster-nodes layout rules below                      |
@@ -61,8 +62,9 @@ add a target. `make help` lists everything.
 | `make check/manifests`      | kubeconform over `tests/golden`, plus memory limits and pinned images         |
 | `make generate`             | re-renders `tests/golden`; run it after any chart or values change            |
 | `make test`                 | every offline test; today `test/unit`                                        |
+| `make test/e2e`             | needs Docker: kind at `REVISION`, wait for Argo CD, query the running stack   |
 | `make test/unit`            | rebuilds `file://` dependencies, then runs every helm-unittest suite          |
-| `make cluster/up`           | kind cluster, Argo CD, the local app-of-apps (~10 min first run, ~3 GB RAM)   |
+| `make cluster/up`           | kind, Argo CD, the local app-of-apps; `REVISION=<ref>` deploys a branch       |
 | `make cluster/port-forward` | Grafana `:3000`, Argo CD `:8080`, Cerberus `:8081`, OTLP `:4317`/`:4318`       |
 | `make cluster/down`         | deletes the kind cluster                                                      |
 
@@ -102,7 +104,13 @@ only network calls are git clones in `make setup` and kubeconform's pinned schem
 gives the same result on a laptop and in CI.
 
 `make check` proves the manifests are well-formed. It does not prove the stack works: ordering, health,
-ClickHouse schema compatibility and Grafana queries are only exercised by deploying to kind.
+ClickHouse schema compatibility and Grafana queries are only exercised by deploying. That is
+`.github/workflows/e2e.yml`, which runs `make test/e2e` on every pull request: a kind cluster on a
+digest-pinned Kubernetes `1.37.0` node, Argo CD, and the `local` app-of-apps at the PR's commit. It then waits
+for every Application to be Synced and Healthy, and queries the running stack through Cerberus: span metrics
+for both demo services, a payments error ratio near 25%, no checkout errors, service-graph metrics, checkout
+logs, failing payments traces, healthy Grafana datasources and the provisioned dashboard. Argo CD pulls the
+commit from GitHub, so e2e runs on pushed commits only.
 
 ### Cluster nodes
 
@@ -210,9 +218,10 @@ External Secrets and Sealed Secrets).
 ### Verification before claiming done
 
 - Run `make check` before every push.
-- For anything that changes what runs — values, templates, versions, waves, health checks — deploy it:
-  `make cluster/up`, wait for `kubectl -n argocd get applications` to show every app Synced / Healthy, then
-  `make cluster/port-forward` and check the result in Grafana. The README's **What you should see** section
+- For anything that changes what runs — values, templates, versions, waves, health checks — make sure the
+  End to end workflow passed on the PR's head commit, or run it yourself after pushing:
+  `make test/e2e REVISION=<your branch>`. For anything the e2e queries don't cover, `make cluster/up
+  REVISION=<your branch>`, then `make cluster/port-forward` and check it in Grafana. The README's **What you should see** section
   lists the expected demo-load numbers.
 - Report exactly what was run. Never write "tested on kind" or "verified in Grafana" in a PR or commit unless
   that happened in this session. `make check` alone is `make check`, and say so.

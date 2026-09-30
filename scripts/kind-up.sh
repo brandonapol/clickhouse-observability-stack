@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Create a local kind cluster, install Argo CD, and hand everything else to
 # the app-of-apps (cluster-configs/app-of-apps/app-of-apps-local.yaml).
+# Pass a git revision to deploy that commit or branch instead of main.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+REVISION=${1:-}
 CLUSTER=clickhouse-obs
 ARGOCD_CHART_VERSION=10.9.2
 
@@ -18,8 +20,14 @@ helm upgrade --install argocd argo-cd \
   --namespace argocd --create-namespace \
   -f cluster-configs/argocd/values.yaml --wait --timeout 10m
 
-echo "==> Applying the local app-of-apps"
-kubectl apply -f cluster-configs/app-of-apps/app-of-apps-local.yaml
+echo "==> Applying the local app-of-apps${REVISION:+ at $REVISION}"
+if [[ -n "$REVISION" ]]; then
+  REVISION="$REVISION" yq '.spec.source.targetRevision = strenv(REVISION) |
+    .spec.source.helm.valuesObject.targetRevision = strenv(REVISION)' \
+    cluster-configs/app-of-apps/app-of-apps-local.yaml | kubectl apply -f -
+else
+  kubectl apply -f cluster-configs/app-of-apps/app-of-apps-local.yaml
+fi
 
 cat <<'MSG'
 

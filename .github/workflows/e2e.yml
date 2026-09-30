@@ -1,0 +1,44 @@
+name: End to end
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+defaults:
+  run:
+    shell: bash
+permissions:
+  contents: read
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  kind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: false
+      - name: Install tools
+        run: |
+          make setup/tools/go setup/tools/cluster
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Deploy this commit to kind and query the stack
+        env:
+          REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          make test/e2e REVISION="$REVISION"
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl -n argocd get applications -o wide || true
+          kubectl get pods -A -o wide || true
+          kubectl get events -A --sort-by=.lastTimestamp | tail -100 || true
+          kubectl -n observability logs deploy/cerberus --tail=200 || true
+          kubectl -n observability logs deploy/otel-collector --tail=200 || true
+          kubectl -n clickhouse-operator logs deploy/clickhouse-operator --tail=200 || true
